@@ -1,34 +1,26 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { SQLiteProvider } from 'expo-sqlite';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import { DATABASE_NAME, initDb, seedDb } from './src/db/db';
+import SelectTable from './src/screens/customer/Select_Table';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }}>
-      
-      <View style={{ flex: 4, backgroundColor: 'lightblue' }}>
-        <Text>40%</Text>
-      </View>
-
-      <View style={{ flex: 6, backgroundColor: 'lightgreen' }}>
-        <Text>50%</Text>
-      </View>
-
-      
-
-  </View>
+    <SQLiteProvider
+      databaseName={DATABASE_NAME}
+      onInit={async (db) => {
+        await initDb(db);
+        await seedDb(db);
+      }}
+    >
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="SelectTable" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="SelectTable" component={SelectTable} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SQLiteProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,  // ← ทำให้เต็มจอ
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  conntent :{
-    flex: 1,
-    backgroundColor: 'black',
-    justifyContent: 'center',
-   
-  }
-});
