@@ -21,7 +21,7 @@
 // - ทุกคำสั่งที่รับค่าจากผู้ใช้ ต้องส่งผ่าน ? เท่านั้น ห้ามต่อสตริง SQL เอง
 // - ราคาเก็บเป็น INTEGER หน่วยสตางค์เสมอ (ห้ามใช้ REAL)  ดำดำ
  
-export const DATABASE_NAME = 'restaurant_order.db';
+export const DATABASE_NAME = 'restaurant_order_v2.db';
  
 // ---------------------------------------------------------------------------
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
@@ -57,7 +57,8 @@ export async function initDb(db) {
     -- โต๊ะในร้าน --------------------------------------------------------
     CREATE TABLE IF NOT EXISTS restaurant_tables (
       table_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-      table_number  INTEGER NOT NULL UNIQUE
+      table_number  INTEGER NOT NULL UNIQUE,
+      seats         INTEGER NOT NULL DEFAULT 4 CHECK (seats > 0)
     );
  
     -- บิล (1 บิล = 1 มื้อของโต๊ะนั้น) --------------------------------------
@@ -128,7 +129,7 @@ const MENU_ITEM_SEED = [
   { category: 'ของคาว', name: 'ต้มยำกุ้งน้ำข้น', priceSatang: 9000 },
   { category: 'ของคาว', name: 'ข้าวมันไก่', priceSatang: 5500 },
   { category: 'ของคาว', name: 'ผัดซีอิ๊วหมู', priceSatang: 5500 },
-  { category: 'ของคาว', name: 'eece', priceSatang: 5500 },
+  
   
  
   // ทานเล่น (6 รายการ)
@@ -167,7 +168,24 @@ const MENU_OPTION_SEED = [
   { itemName: 'ชาไทยเย็น', name: 'ไม่ใส่น้ำแข็ง', priceDeltaSatang: 0 },
 ];
  
-const TABLE_COUNT = 15; // ตามสถานการณ์ในโจทย์ §1: ร้านมี 15 โต๊ะ
+// ตามสถานการณ์ในโจทย์ §1: ร้านมี 15 โต๊ะ — จำนวนที่นั่งกำหนดเองต่อโต๊ะ (โต๊ะเล็ก/กลาง/ใหญ่ปนกัน)
+const TABLE_SEED = [
+  { number: 1, seats: 2 },
+  { number: 2, seats: 2 },
+  { number: 3, seats: 4 },
+  { number: 4, seats: 4 },
+  { number: 5, seats: 4 },
+  { number: 6, seats: 4 },
+  { number: 7, seats: 2 },
+  { number: 8, seats: 6 },
+  { number: 9, seats: 2 },
+  { number: 10, seats: 2 },
+  { number: 11, seats: 4 },
+  { number: 12, seats: 8 },
+  { number: 13, seats: 4 },
+  { number: 14, seats: 6 },
+  { number: 15, seats: 2 },
+];
  
 // ---------------------------------------------------------------------------
 // 3) ใส่ข้อมูลตั้งต้น — เช็คก่อนว่าเคยใส่ไปแล้วหรือยัง กันการใส่ซ้ำตอนเปิดแอปรอบถัดไป
@@ -205,8 +223,11 @@ export async function seedDb(db) {
     }
  
     // restaurant_tables -----------------------------------------------------
-    for (let tableNumber = 1; tableNumber <= TABLE_COUNT; tableNumber++) {
-      await db.runAsync('INSERT INTO restaurant_tables (table_number) VALUES (?)', [tableNumber]);
+    for (const table of TABLE_SEED) {
+      await db.runAsync(
+        'INSERT INTO restaurant_tables (table_number, seats) VALUES (?, ?)',
+        [table.number, table.seats]
+      );
     }
   });
 }

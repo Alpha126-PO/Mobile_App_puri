@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useFocusEffect } from '@react-navigation/native';
 import colors, { alpha } from './style/colors';
+import { getTablesWithStatus, openNewBill } from '../../db/tables';
+import { getKitchenQueueCount } from '../../db/orders';
+
+//ใช้การ render ตารางผ่าน scrollviwe ไม่ใช่การใช้ FlatList
+// 133 คือ การดึงมาจาก db
+// 134 คือ state จากเครื่องไม่เกี่ยวกับ db
 
 const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const THAI_MONTHS = [
@@ -35,7 +43,40 @@ function LiveClock() {
   );
 }
 
-export default function SelectTable() {
+export default function SelectTable({ navigation }) {
+  const db = useSQLiteContext();  // เอาไว้ไปดึงข้อมูลคำสั่ง query โต๊ะใน table.js
+  const [tables, setTables] = useState([]);
+  const [selectedTableId, setSelectedTableId] = useState(null);
+  const [kitchenQueueCount, setKitchenQueueCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      getTablesWithStatus(db).then(setTables);
+      getKitchenQueueCount(db).then(setKitchenQueueCount);
+    }, [db])
+  );
+
+  const selectedTable = tables.find((t) => t.table_id === selectedTableId);
+  const canOpenNewBill = !!selectedTable && selectedTable.bill_id == null;
+  const canEnterExistingBill = !!selectedTable && selectedTable.bill_id != null;
+
+  const availableCount = tables.filter((t) => t.bill_id == null).length;
+  const busyCount = tables.filter((t) => t.bill_id != null).length;
+
+  async function handleOpenNewBill() {
+    if (!canOpenNewBill) return;
+    const billId = await openNewBill(db, selectedTable.table_id);
+    navigation.navigate('MenuScreen', { billId, tableId: selectedTable.table_id });
+  }
+
+  function handleEnterExistingBill() {
+    if (!canEnterExistingBill) return;
+    navigation.navigate('MenuScreen', {
+      billId: selectedTable.bill_id,
+      tableId: selectedTable.table_id,
+    });
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.leftPanel}>
@@ -45,6 +86,9 @@ export default function SelectTable() {
           <Text style={styles.greetingSubtitle}>
             แตะหมายเลขโต๊ะที่คุณนั่งอยู่จากผังด้านขวา แล้วเปิดบิลใหม่หรือเข้าบิลที่ค้างอยู่
           </Text>
+          <View style={{height:150}}>
+
+          </View>
 
           <LiveClock />
 
@@ -52,21 +96,104 @@ export default function SelectTable() {
           <View style={styles.statsRow}>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>โต๊ะว่าง</Text>
-              <Text style={styles.statValue}>8</Text>
+              <Text style={styles.statValue}>{availableCount}</Text>
             </View>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>มีบิลค้าง</Text>
-              <Text style={styles.statValueOrange}>4</Text>
+              <Text style={styles.statValueOrange}>{busyCount}</Text>
             </View>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>คิวครัว</Text>
-              <Text style={styles.statValue}>6</Text>
+              <Text style={styles.statValue}>{kitchenQueueCount}</Text>
             </View>
           </View>
         </View>
       </View>
+      
       <View style={styles.rightPanel}>
+        <View style={styles.rightHeaderRow}>
+          <View>
+            <Text style={styles.rightTitle}>เลือกโต๊ะของคุณ</Text>
+            <Text style={styles.rightSubtitle}>โต๊ะสีส้มคือมีบิลอยู่ แตะเพื่อสั่งต่อในบิลเดิม</Text>
+          </View>
 
+          <View style={styles.legendRow}>
+            <View style={styles.legendBadge}>
+              <View style={styles.legendDotAvailable} />
+              <Text style={styles.legendText}>ว่าง {availableCount}</Text>
+            </View>
+            <View style={styles.legendBadge}>
+              <View style={styles.legendDotBusy} />
+              <Text style={styles.legendText}>มีบิลค้าง {busyCount}</Text>
+            </View>
+          </View>
+        </View>
+
+        <ScrollView style={styles.gridScroll}>  
+          <View style={styles.gridWrap}>
+             {tables.map((t) => {
+              const isBusy = t.bill_id != null;
+              const isSelected = t.table_id === selectedTableId;
+
+              return (
+                <Pressable
+                  key={t.table_id}
+                  onPress={() => setSelectedTableId(t.table_id)}
+                  style={[
+                    styles.tableCard,
+                    isBusy && styles.tableCardBusy,
+                    isSelected && styles.tableCardSelected,
+                  ]}
+                >
+                  <Text style={styles.tableNumber}>T{t.table_number}</Text>
+
+                  {isSelected ? (
+                    <Text style={styles.tableSelectedLabel}>เลือกอยู่</Text>
+                  ) : isBusy ? (
+                    <>
+                      <Text style={styles.tableBusyAmount}>
+                        ฿{(t.total_satang / 100).toLocaleString()}
+                      </Text>
+                      <Text style={styles.tableBusyRounds}>{t.round_count} รอบ</Text>
+                      <Text style={styles.tableOpenedTime}>
+                        เปิด {t.opened_at ? t.opened_at.slice(11, 16) : ''}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.tableStatusText}>ว่าง · {t.seats} ที่นั่ง</Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={handleOpenNewBill}
+            disabled={!canOpenNewBill}
+            style={[styles.primaryButton, !canOpenNewBill && styles.primaryButtonDisabled]}
+          >
+            <Text style={styles.primaryButtonText}>
+              {selectedTable ? `เปิดบิลใหม่ · โต๊ะ ${selectedTable.table_number}` : 'เปิดบิลใหม่'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleEnterExistingBill}
+            disabled={!canEnterExistingBill}
+            style={[styles.secondaryButton, !canEnterExistingBill && styles.secondaryButtonDisabled]}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                !canEnterExistingBill && styles.secondaryButtonTextDisabled,
+              ]}
+            >
+              เข้าบิลที่ค้างอยู่
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -103,7 +230,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 2,
     textTransform: 'uppercase',
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
   },
   greetingTitle: {
     fontSize: 34,
@@ -115,7 +242,7 @@ const styles = StyleSheet.create({
   greetingSubtitle: {
     fontSize: 15,
     lineHeight: 22,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
     marginTop: 12,
   },
 
@@ -131,7 +258,7 @@ const styles = StyleSheet.create({
   },
   clockDate: {
     fontSize: 14,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
     marginTop: 4,
   },
 
@@ -150,7 +277,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
   },
   statValue: {
     fontSize: 28,
@@ -180,7 +307,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
   },
 
   
