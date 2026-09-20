@@ -21,7 +21,7 @@
 // - ทุกคำสั่งที่รับค่าจากผู้ใช้ ต้องส่งผ่าน ? เท่านั้น ห้ามต่อสตริง SQL เอง
 // - ราคาเก็บเป็น INTEGER หน่วยสตางค์เสมอ (ห้ามใช้ REAL)  ดำดำ
  
-export const DATABASE_NAME = 'restaurant_order_v3.db';
+export const DATABASE_NAME = 'restaurant_order_v4.db';
  
 // ---------------------------------------------------------------------------
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
@@ -172,7 +172,11 @@ const MENU_OPTION_SEED = [
   { itemName: 'กะเพราหมูสับ', name: 'ไข่เจียว', priceDeltaSatang: 2000 },
   
 
+  { itemName: 'กะเพราไก่', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'กะเพราไก่', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
   { itemName: 'กะเพราไก่', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
+  { itemName: 'กะเพราไก่', name: 'ไข่เจียว', priceDeltaSatang: 1000 },
+  
   { itemName: 'ข้าวผัดปู', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
   { itemName: 'ข้าวมันไก่', name: 'เพิ่มไก่', priceDeltaSatang: 2000 },
   { itemName: 'ชาไทยเย็น', name: 'หวานน้อย', priceDeltaSatang: 0 },
