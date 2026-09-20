@@ -16,24 +16,44 @@ const THAI_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
-function formatThaiDate(date) {
-  const day = THAI_DAYS[date.getDay()];
-  const month = THAI_MONTHS[date.getMonth()];
-  const buddhistYear = date.getFullYear() + 543;
-  const period = date.getHours() < 12 ? 'เช้า' : date.getHours() < 17 ? 'บ่าย' : 'เย็น';
-  return `${day} ${date.getDate()} ${month} ${buddhistYear} · รอบ${period}`;
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000; // ไทย = UTC+7 เสมอ ไม่มี DST
+
+// คำนวณเวลาไทยตรงจาก UTC 
+//ส่งกลับ getUTCxxx จะได้ไม่ให้เครื่องเอา โวนเวลาของเครื่องมาคิด
+function getBangkokNow() {
+  return new Date(Date.now() + BANGKOK_OFFSET_MS);
+}
+
+function formatThaiDate(bangkokDate) {
+  const day = THAI_DAYS[bangkokDate.getUTCDay()];
+  const month = THAI_MONTHS[bangkokDate.getUTCMonth()];
+  const buddhistYear = bangkokDate.getUTCFullYear() + 543;
+  const hours = bangkokDate.getUTCHours();
+  const period = hours < 12 ? 'เช้า' : hours < 17 ? 'บ่าย' : 'เย็น';
+  return `${day} ${bangkokDate.getUTCDate()} ${month} ${buddhistYear} · รอบ${period}`;
+}
+
+
+// เติม T + ' ให้ parser รู้ว่า string นี้คือ UTC ไม่ใช่ local time จะได้เวลาไทยตลอด
+function formatBangkokHM(sqliteUtcString) {
+  if (!sqliteUtcString) return '';
+  const utcMs = Date.parse(sqliteUtcString.replace(' ', 'T') + 'Z');
+  const bangkokDate = new Date(utcMs + BANGKOK_OFFSET_MS);
+  const hh = String(bangkokDate.getUTCHours()).padStart(2, '0');
+  const mm = String(bangkokDate.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
 }
 
 function LiveClock() {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(getBangkokNow());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(getBangkokNow()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
+  const hh = String(now.getUTCHours()).padStart(2, '0');
+  const mm = String(now.getUTCMinutes()).padStart(2, '0');
 
   return (
     <View style={styles.clockBlock}>
@@ -156,7 +176,7 @@ export default function SelectTable({ navigation }) {
                       </Text>
                       <Text style={styles.tableBusyRounds}>{t.round_count} รอบ</Text>
                       <Text style={styles.tableOpenedTime}>
-                        เปิด {t.opened_at ? t.opened_at.slice(11, 16) : ''}
+                        เปิด {formatBangkokHM(t.opened_at)}
                       </Text>
                     </>
                   ) : (

@@ -10,3 +10,11 @@ export async function getKitchenQueueCount(db) {
   );
   return row?.count ?? 0;
 }
+// เอาไว้นับรอบบิล
+export async function getBillRoundCount(db, billId) {
+  const row = await db.getFirstAsync(`
+    SELECT COUNT(*) AS count FROM order_rounds WHERE bill_id = ?
+  `, [billId]);
+  return row?.count ?? 0;
+  
+}

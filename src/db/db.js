@@ -21,7 +21,7 @@
 // - ทุกคำสั่งที่รับค่าจากผู้ใช้ ต้องส่งผ่าน ? เท่านั้น ห้ามต่อสตริง SQL เอง
 // - ราคาเก็บเป็น INTEGER หน่วยสตางค์เสมอ (ห้ามใช้ REAL)  ดำดำ
  
-export const DATABASE_NAME = 'restaurant_order_v2.db';
+export const DATABASE_NAME = 'restaurant_order_v3.db';
  
 // ---------------------------------------------------------------------------
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
@@ -46,12 +46,17 @@ export async function initDb(db) {
       is_available  INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1))
     );
  
-    -- ตัวเลือกย่อยของเมนู เช่น ไข่ดาว, ไซส์ใหญ่ (มีผลต่อราคา) ------------------
+    -- ตัวเลือกย่อยของเมนู เช่น ไข่ดาว, ขนาดพิเศษ (มีผลต่อราคา) ------------------
+    -- group_name แยกกลุ่มตัวเลือก เช่น 'ขนาด' กับ 'เพิ่มเติม'
+    -- selection_type 'single' = เลือกได้ 1 (บังคับ) เหมือน radio, 'multiple' = เลือกได้หลายอัน (ไม่บังคับ) เหมือน checkbox
     CREATE TABLE IF NOT EXISTS menu_options (
       option_id           INTEGER PRIMARY KEY AUTOINCREMENT,
       item_id              INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE CASCADE,
       name                 TEXT NOT NULL,
-      price_delta_satang   INTEGER NOT NULL DEFAULT 0
+      price_delta_satang   INTEGER NOT NULL DEFAULT 0,
+      group_name           TEXT NOT NULL DEFAULT 'เพิ่มเติม',
+      selection_type       TEXT NOT NULL DEFAULT 'multiple' CHECK (selection_type IN ('single', 'multiple')),
+      is_available         INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1))
     );
  
     -- โต๊ะในร้าน --------------------------------------------------------
@@ -159,8 +164,14 @@ const MENU_ITEM_SEED = [
 // รวม 26 รายการ / 4 หมวดหมู่ — ผ่านเกณฑ์ ≥4 หมวด หมวดละ ≥5 รวม ≥25 ของโจทย์ §2.1 ข้อ ก2
  
 const MENU_OPTION_SEED = [
-  { itemName: 'กะเพราหมูสับ', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
-  { itemName: 'กะเพราหมูสับ', name: 'ไซส์ใหญ่', priceDeltaSatang: 1500 },
+  // กะเพราหมูสับ 
+  { itemName: 'กะเพราหมูสับ', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'กะเพราหมูสับ', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  // เพิ่มเติม
+  { itemName: 'กะเพราหมูสับ', name: 'ไข่ดาว', priceDeltaSatang: 1500 },
+  { itemName: 'กะเพราหมูสับ', name: 'ไข่เจียว', priceDeltaSatang: 2000 },
+  
+
   { itemName: 'กะเพราไก่', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
   { itemName: 'ข้าวผัดปู', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
   { itemName: 'ข้าวมันไก่', name: 'เพิ่มไก่', priceDeltaSatang: 2000 },
@@ -217,8 +228,17 @@ export async function seedDb(db) {
     // menu_options --------------------------------------------------------
     for (const opt of MENU_OPTION_SEED) {
       await db.runAsync(
-        'INSERT INTO menu_options (item_id, name, price_delta_satang) VALUES (?, ?, ?)',
-        [itemIdByName[opt.itemName], opt.name, opt.priceDeltaSatang]
+        `INSERT INTO menu_options
+           (item_id, name, price_delta_satang, group_name, selection_type, is_available)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          itemIdByName[opt.itemName],
+          opt.name,
+          opt.priceDeltaSatang,
+          opt.groupName ?? 'เพิ่มเติม',
+          opt.selectionType ?? 'multiple',
+          opt.isAvailable === false ? 0 : 1,
+        ]
       );
     }
  
