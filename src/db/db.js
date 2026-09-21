@@ -21,7 +21,7 @@
 // - ทุกคำสั่งที่รับค่าจากผู้ใช้ ต้องส่งผ่าน ? เท่านั้น ห้ามต่อสตริง SQL เอง
 // - ราคาเก็บเป็น INTEGER หน่วยสตางค์เสมอ (ห้ามใช้ REAL)  ดำดำ
  
-export const DATABASE_NAME = 'restaurant_order_v4.db';
+export const DATABASE_NAME = 'restaurant_order_v6.db';
  
 // ---------------------------------------------------------------------------
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
@@ -168,8 +168,8 @@ const MENU_OPTION_SEED = [
   { itemName: 'กะเพราหมูสับ', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
   { itemName: 'กะเพราหมูสับ', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
   // เพิ่มเติม
-  { itemName: 'กะเพราหมูสับ', name: 'ไข่ดาว', priceDeltaSatang: 1500 },
-  { itemName: 'กะเพราหมูสับ', name: 'ไข่เจียว', priceDeltaSatang: 2000 },
+  { itemName: 'กะเพราหมูสับ', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
+  { itemName: 'กะเพราหมูสับ', name: 'ไข่เจียว', priceDeltaSatang: 1000 },
   
 
   { itemName: 'กะเพราไก่', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
@@ -177,8 +177,21 @@ const MENU_OPTION_SEED = [
   { itemName: 'กะเพราไก่', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
   { itemName: 'กะเพราไก่', name: 'ไข่เจียว', priceDeltaSatang: 1000 },
   
-  { itemName: 'ข้าวผัดปู', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
+  
+  { itemName: 'ข้าวผัดปู', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวผัดปู', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวผัดปู', name: 'เพิ่มปู', priceDeltaSatang: 1000 },
+  
+  { itemName: 'ข้าวมันไก่', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวมันไก่', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
   { itemName: 'ข้าวมันไก่', name: 'เพิ่มไก่', priceDeltaSatang: 2000 },
+ 
+  { itemName: 'ผัดไทยกุ้งสด', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ผัดไทยกุ้งสด', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+
+  { itemName: 'ผัดซีอิ๊วหมู', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ผัดซีอิ๊วหมู', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  
   { itemName: 'ชาไทยเย็น', name: 'หวานน้อย', priceDeltaSatang: 0 },
   { itemName: 'ชาไทยเย็น', name: 'ไม่ใส่น้ำแข็ง', priceDeltaSatang: 0 },
 ];
@@ -222,21 +235,33 @@ export async function seedDb(db) {
     // menu_items ----------------------------------------------------------
     const itemIdByName = {};
     for (const item of MENU_ITEM_SEED) {
+      const categoryId = categoryIdByName[item.category];
+      if (!categoryId) {
+        throw new Error(
+          `MENU_ITEM_SEED: ไม่พบหมวดหมู่ "${item.category}" ใน CATEGORY_SEED (สะกดผิดหรือยัง?) — เมนู "${item.name}" จะ insert ไม่ได้`
+        );
+      }
       const result = await db.runAsync(
         'INSERT INTO menu_items (category_id, name, price_satang) VALUES (?, ?, ?)',
-        [categoryIdByName[item.category], item.name, item.priceSatang]
+        [categoryId, item.name, item.priceSatang]
       );
       itemIdByName[item.name] = result.lastInsertRowId;
     }
  
     // menu_options --------------------------------------------------------
     for (const opt of MENU_OPTION_SEED) {
+      const itemId = itemIdByName[opt.itemName];
+      if (!itemId) {
+        throw new Error(
+          `MENU_OPTION_SEED: ไม่พบเมนูชื่อ "${opt.itemName}" ใน MENU_ITEM_SEED (สะกดผิดหรือยัง?) — ตัวเลือก "${opt.name}" จะ insert ไม่ได้`
+        );
+      }
       await db.runAsync(
         `INSERT INTO menu_options
            (item_id, name, price_delta_satang, group_name, selection_type, is_available)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
-          itemIdByName[opt.itemName],
+          itemId,
           opt.name,
           opt.priceDeltaSatang,
           opt.groupName ?? 'เพิ่มเติม',

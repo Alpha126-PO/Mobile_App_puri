@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import colors, { alpha } from './style/colors';
 import { getTablesWithStatus, openNewBill } from '../../db/tables';
 import { getKitchenQueueCount } from '../../db/orders';
+import { resetSalesData } from '../../db/db';
 
 //ใช้การ render ตารางผ่าน scrollviwe ไม่ใช่การใช้ FlatList
 // 133 คือ การดึงมาจาก db
@@ -44,6 +45,12 @@ function formatBangkokHM(sqliteUtcString) {
   return `${hh}:${mm}`;
 }
 
+
+// เปิดบิลแต่ไม่ได้สั่ง จะถือว่าไม่มีบิลค้างเด้ออ
+function isTableBusy(t) {
+  return t.bill_id != null && t.round_count > 0;
+}
+
 function LiveClock() {
   const [now, setNow] = useState(getBangkokNow());
 
@@ -77,15 +84,19 @@ export default function SelectTable({ navigation }) {
   );
 
   const selectedTable = tables.find((t) => t.table_id === selectedTableId);
-  const canOpenNewBill = !!selectedTable && selectedTable.bill_id == null;
-  const canEnterExistingBill = !!selectedTable && selectedTable.bill_id != null;
+  
+  // busy คือต้องสั่งก่อนอย่าน้อย 1 ครั้งนะครับ ่ท่านผู้ชม 
+  const canOpenNewBill = !!selectedTable && !isTableBusy(selectedTable);
+  const canEnterExistingBill = !!selectedTable && isTableBusy(selectedTable);
 
-  const availableCount = tables.filter((t) => t.bill_id == null).length;
-  const busyCount = tables.filter((t) => t.bill_id != null).length;
+  const availableCount = tables.filter((t) => !isTableBusy(t)).length;
+  const busyCount = tables.filter((t) => isTableBusy(t)).length;
 
   async function handleOpenNewBill() {
     if (!canOpenNewBill) return;
-    const billId = await openNewBill(db, selectedTable.table_id);
+    // ถ้าโต๊ะนี้มีบิลเปิดอยู่แล้ว (แค่ยังไม่สั่ง) ใช้บิลเดิมต่อ ไม่ insert ซ้ำ กันบิลซ้อนกัน
+    const billId =
+      selectedTable.bill_id ?? (await openNewBill(db, selectedTable.table_id));
     navigation.navigate('MenuScreen', { billId, tableId: selectedTable.table_id });
   }
 
@@ -95,6 +106,26 @@ export default function SelectTable({ navigation }) {
       billId: selectedTable.bill_id,
       tableId: selectedTable.table_id,
     });
+  }
+
+  function handleResetData() {
+    Alert.alert(
+      'ล้างข้อมูลการขายทั้งหมด?',
+      'บิล รอบการสั่ง และรายการที่สั่งไปทั้งหมดจะถูกลบกลับสู่สถานะเริ่มต้น (เมนู/หมวดหมู่/โต๊ะไม่หาย) แก้คืนไม่ได้',
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ล้างข้อมูล',
+          style: 'destructive',
+          onPress: async () => {
+            await resetSalesData(db);
+            setSelectedTableId(null);
+            getTablesWithStatus(db).then(setTables);
+            getKitchenQueueCount(db).then(setKitchenQueueCount);
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -128,8 +159,12 @@ export default function SelectTable({ navigation }) {
             </View>
           </View>
         </View>
+
+        <Pressable style={styles.resetButton} onPress={handleResetData}>
+          <Text style={styles.resetButtonText}>ล้างข้อมูลการขาย</Text>
+        </Pressable>
       </View>
-      
+
       <View style={styles.rightPanel}>
         <View style={styles.rightHeaderRow}>
           <View>
@@ -152,7 +187,7 @@ export default function SelectTable({ navigation }) {
         <ScrollView style={styles.gridScroll}>  
           <View style={styles.gridWrap}>
              {tables.map((t) => {
-              const isBusy = t.bill_id != null;
+              const isBusy = isTableBusy(t);
               const isSelected = t.table_id === selectedTableId;
 
               return (
@@ -312,25 +347,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  
-  // ฝั่งซ้าย — สถานะเชื่อมต่อ (ล่างสุด)
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  // ฝั่งซ้าย — ปุ่มล้างข้อมูล (ชิดล่างสุดของแผง)
+  resetButton: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: alpha.onDarkMin,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  footerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.core.brandGreen,
-  },
-  footerText: {
+  resetButtonText: {
     fontSize: 12,
+    fontWeight: '600',
     color: alpha.onDarkMax,
   },
 
-  
   // ฝั่งขวา — หัวข้อ + legend
   rightHeaderRow: {
     flexDirection: 'row',

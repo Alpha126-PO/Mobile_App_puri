@@ -4,12 +4,14 @@ import { useSQLiteContext } from 'expo-sqlite';
 import colors, { alpha } from './style/colors';
 import { getMenuItemDetail } from '../../db/menu';
 import { MENU_IMAGES } from './menuImages';
+import { useCart } from '../../context/CartContext';
 
 const QUICK_NOTE_TAGS = ['ไม่เผ็ด', 'ไม่ใส่ผัก', 'แยกข้าว'];
 
 export default function ItemDetailScreen({ route, navigation }) {
   const { itemId } = route.params;
   const db = useSQLiteContext();
+  const { addToCart } = useCart();
 
   const [item, setItem] = useState(null);
   const [options, setOptions] = useState([]);
@@ -57,20 +59,20 @@ export default function ItemDetailScreen({ route, navigation }) {
       (o) => o.option_id === selectedSizeOptionId || selectedAddonIds.includes(o.option_id)
     );
 
-    navigation.navigate('MenuScreen', {
-      addedItem: {
-        item_id: item.item_id,
-        name: item.name,
-        unit_price_satang: unitTotal,
-        quantity,
-        note,
-        options: selectedOptions.map((o) => ({
-          option_id: o.option_id,
-          name: o.name,
-          price_delta_satang: o.price_delta_satang,
-        })),
-      },
+    addToCart({
+      item_id: item.item_id,
+      name: item.name,
+      unit_price_satang: unitTotal,
+      quantity,
+      note,
+      options: selectedOptions.map((o) => ({
+        option_id: o.option_id,
+        name: o.name,
+        price_delta_satang: o.price_delta_satang,
+      })),
     });
+
+    navigation.goBack();
   }
 
   return (
@@ -80,7 +82,7 @@ export default function ItemDetailScreen({ route, navigation }) {
           <Text style={styles.closeButtonText}>×</Text>
         </Pressable>
 
-        {/* ฝั่งซ้าย — โชว์รูปจริงถ้ามีใน MENU_IMAGES ไม่งั้น fallback เป็น placeholder */}
+
         <View style={styles.imagePanel}>
           {MENU_IMAGES[item.name] ? (
             <Image source={MENU_IMAGES[item.name]} style={styles.imagePanelPhoto} />

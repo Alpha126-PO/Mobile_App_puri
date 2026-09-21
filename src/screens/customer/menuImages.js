@@ -1,10 +1,9 @@
-
-// โฟลเดอร์รูปแบ่งตามหมวดหมู่ใน assets/menu/:
 //   savory/  = ของคาว
 //   snack/   = ทานเล่น
 //   dessert/ = ของหวาน
 //   drink/   = เครื่องดื่ม
 
+// อันนี้เก็บรูปภาพทั้งหมดของรายการอาหาร
 export const MENU_IMAGES = {
   // ของคาว 
   'กะเพราหมูสับ': require('../../../assets/menu/savory/kaphrao.jpg'),

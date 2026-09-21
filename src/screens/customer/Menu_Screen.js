@@ -1,10 +1,12 @@
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Switch, ScrollView, Pressable, Image } from 'react-native';
 import colors, { alpha } from './style/colors';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useFocusEffect } from '@react-navigation/native';
 import { getCategoriesWithCounts, getMenuItems } from '../../db/menu';
 import { getBillRoundCount } from '../../db/orders';
 import { MENU_IMAGES } from './menuImages';
+import { useCart } from '../../context/CartContext';
 
 
 export default function MenuScreen({ route, navigation }) {
@@ -14,10 +16,10 @@ export default function MenuScreen({ route, navigation }) {
   const [selectedCategoryId, setSelectedCategoryId] = useState(null);
 
   const [searchText, setSearchText] = useState('');
-  const [onlyAvailable, setOnlyAvailable] = useState(true);  // toggle เอาไว้ติดตามการค้นหา เร
+  const [onlyAvailable, setOnlyAvailable] = useState(true);  // toggle เอาไว้ติดตามการค้นหา 
   const [menuItems, setMenuItems] = useState([]);
 
-  const [cart, setCart] = useState([]);
+  const { cart, removeFromCart } = useCart();
 
   const [roundCount, setRoundCount] = useState(0);
 
@@ -42,19 +44,16 @@ export default function MenuScreen({ route, navigation }) {
 
 
 
-  useEffect(() => {
-    getBillRoundCount(db, billId).then(setRoundCount);
-  }, [db, billId])
 
-  // รับรายการที่ยืนยันมาจากหน้ารายละเอียดเมนู (ItemDetailScreen) ผ่าน route.params
-  // แต่ละครั้งเพิ่มเป็นแถวใหม่เสมอ (ไม่ merge ตาม item_id) เพราะตัวเลือก/หมายเหตุอาจต่างกัน
-  useEffect(() => {
-    const addedItem = route.params?.addedItem;
-    if (addedItem) {
-      setCart((prev) => [...prev, addedItem]);
-      navigation.setParams({ addedItem: undefined });
-    }
-  }, [route.params?.addedItem]);
+  // ReviewScreen หลังส่งครัวสำเร็จ ต้องรีเฟรชทุกครั้งที่กลับมา ไม่งั้นเลขที่โชว์จะค้าง
+  // รีหน้าจอทุกครั้งที่กลับมาหน้าเมนู
+  useFocusEffect(
+    useCallback(() => {
+      getBillRoundCount(db, billId).then(setRoundCount);
+    }, [db, billId])
+  );
+
+  // cart มาจาก CartContext แล้ว (addToCart/removeFromCart) ไม่ต้องดัก route.params อีกต่อไป
 
 
   return (
@@ -161,27 +160,33 @@ export default function MenuScreen({ route, navigation }) {
       
       
       <View style={styles.rightPanel}>
-        <Text style={styles.cartHeaderTitle}>ตะกร้ารอบที่ {roundCount + 1}</Text>
-        <Text style={styles.cartHeaderSubtitle}>ยังไม่ส่งครัว · แก้ไขได้</Text>
+        <ScrollView style={styles.cartScroll}>
+          <Text style={styles.cartHeaderTitle}>ตะกร้ารอบที่ {roundCount + 1}</Text>
+          <Text style={styles.cartHeaderSubtitle}>ยังไม่ส่งครัว · แก้ไขได้</Text>
 
-        <View style={styles.cartList}>
-          {cart.map((c, index) => {
-            const noteLine = [c.options?.map((o) => o.name).join(', '), c.note]
-              .filter(Boolean)
-              .join(' · ');
-            return (
-              <View key={`${c.item_id}-${index}`} style={styles.cartLineRow}>
-                <View style={styles.cartLineNameCol}>
-                  <Text style={styles.cartLineQtyName}>{c.quantity}× {c.name}</Text>
-                  {noteLine ? <Text style={styles.cartLineNote}>{noteLine}</Text> : null}
+          <View style={styles.cartList}>
+            {cart.map((c, index) => {
+              const noteLine = [c.options?.map((o) => o.name).join(', '), c.note]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <View key={`${c.item_id}-${index}`} style={styles.cartLineRow}>
+                  <View style={styles.cartLineNameCol}>
+                    <Text style={styles.cartLineQtyName}>{c.quantity}× {c.name}</Text>
+                    {noteLine ? <Text style={styles.cartLineNote}>{noteLine}</Text> : null}
+                  </View>
+                  <Text style={styles.cartLinePrice}>
+                    ฿{((c.unit_price_satang * c.quantity) / 100).toLocaleString()}
+                  </Text>
+                  <Pressable style={styles.cartRemoveButton} onPress={() => removeFromCart(index)}>
+                    <Text style={styles.cartRemoveButtonText}>×</Text>
+                  </Pressable>
                 </View>
-                <Text style={styles.cartLinePrice}>
-                  ฿{((c.unit_price_satang * c.quantity) / 100).toLocaleString()}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+
 
         <View style={styles.cartDivider} />
 
@@ -195,7 +200,6 @@ export default function MenuScreen({ route, navigation }) {
           disabled={cart.length === 0}
           onPress={() =>
             navigation.navigate('ReviewScreen', {
-              cart,
               billId,
               tableId,
               roundNumber: roundCount + 1,
@@ -213,24 +217,6 @@ export default function MenuScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.core.screenBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    color: colors.core.darkGreen,
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  subtitle: {
-    color: colors.text.description,
-    fontSize: 14,
-    marginTop: 8,
-  },
-
-
   // Layout หลัก — 3 zone
   screen: {
     flex: 1,
@@ -302,23 +288,6 @@ const styles = StyleSheet.create({
   categoryItemCountActive: {
     color: alpha.onDarkMax,
   },
-  callStaffCard: {
-    marginTop: 'auto',
-    backgroundColor: colors.surface.searchChip,
-    borderRadius: 16,
-    padding: 16,
-  },
-  callStaffTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text.secondary,
-  },
-  callStaffSubtitle: {
-    fontSize: 12,
-    color: colors.text.placeholder,
-    marginTop: 4,
-  },
-
   // กลาง — ค้นหา / filter / กริดเมนู
   middlePanel: {
     flex: 6,
@@ -406,11 +375,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: colors.core.darkGreen,
   },
-  menuCardDescription: {
-    fontSize: 12,
-    color: colors.text.placeholder,
-    marginTop: 4,
-  },
   menuCardFooterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -442,6 +406,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface.cartPanel,
     padding: 24,
   },
+  cartScroll: {
+    flex: 1,
+  },
   cartHeaderTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -459,6 +426,8 @@ const styles = StyleSheet.create({
   cartLineRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
   },
   cartLineNameCol: {
     flex: 1,
@@ -477,6 +446,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: colors.core.darkGreen,
+  },
+  cartRemoveButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.red.bgLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartRemoveButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.red.action,
   },
   cartDivider: {
     height: 1,
@@ -508,13 +490,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.core.screenBg,
-  },
-  viewFullBillLink: {
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  viewFullBillLinkText: {
-    fontSize: 13,
-    color: colors.text.placeholder,
   },
 });
