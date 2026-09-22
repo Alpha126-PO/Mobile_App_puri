@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Image } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import colors, { alpha } from './style/colors';
-import { getMenuItemDetail } from '../../db/menu';
+import { getMenuItemDetail } from '../../db/queries_customer/menu';
 import { MENU_IMAGES } from './menuImages';
 import { useCart } from '../../context/CartContext';
 

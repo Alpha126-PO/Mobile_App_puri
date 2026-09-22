@@ -3,8 +3,8 @@ import colors, { alpha } from './style/colors';
 import { useState, useEffect, useCallback } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
-import { getCategoriesWithCounts, getMenuItems } from '../../db/menu';
-import { getBillRoundCount } from '../../db/orders';
+import { getCategoriesWithCounts, getMenuItems } from '../../db/queries_customer/menu';
+import { getBillRoundCount } from '../../db/queries_customer/orders';
 import { MENU_IMAGES } from './menuImages';
 import { useCart } from '../../context/CartContext';
 

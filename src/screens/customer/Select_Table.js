@@ -3,8 +3,8 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSQLiteContext } from 'expo-sqlite';
 import { useFocusEffect } from '@react-navigation/native';
 import colors, { alpha } from './style/colors';
-import { getTablesWithStatus, openNewBill } from '../../db/tables';
-import { getKitchenQueueCount } from '../../db/orders';
+import { getTablesWithStatus, openNewBill } from '../../db/queries_customer/tables';
+import { getKitchenQueueCount } from '../../db/queries_customer/orders';
 import { resetSalesData } from '../../db/db';
 
 //ใช้การ render ตารางผ่าน scrollviwe ไม่ใช่การใช้ FlatList

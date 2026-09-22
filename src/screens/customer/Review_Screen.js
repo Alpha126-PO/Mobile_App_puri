@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View, Image } from 'react-nati
 import { useSQLiteContext } from 'expo-sqlite';
 import colors, { alpha } from './style/colors';
 import { useCart } from '../../context/CartContext';
-import { getPreviousRoundsSummary, submitOrderRound } from '../../db/orders';
+import { getPreviousRoundsSummary, submitOrderRound } from '../../db/queries_customer/orders';
 import { MENU_IMAGES } from './menuImages';
 
 export default function ReviewScreen({ route, navigation }) {
