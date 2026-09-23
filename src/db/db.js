@@ -21,7 +21,7 @@
 // - ทุกคำสั่งที่รับค่าจากผู้ใช้ ต้องส่งผ่าน ? เท่านั้น ห้ามต่อสตริง SQL เอง
 // - ราคาเก็บเป็น INTEGER หน่วยสตางค์เสมอ (ห้ามใช้ REAL)  ดำดำ
  
-export const DATABASE_NAME = 'restaurant_order.db';
+export const DATABASE_NAME = 'restaurant_order_v6.db';
  
 // ---------------------------------------------------------------------------
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
@@ -45,20 +45,24 @@ export async function initDb(db) {
       is_available  INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1))
     );
   `);
-
+  
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS menu_options (
       option_id           INTEGER PRIMARY KEY AUTOINCREMENT,
       item_id             INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE CASCADE,
       name                TEXT NOT NULL,
-      price_delta_satang  INTEGER NOT NULL DEFAULT 0
+      price_delta_satang  INTEGER NOT NULL DEFAULT 0,
+      group_name          TEXT NOT NULL DEFAULT 'เพิ่มเติม',
+      selection_type      TEXT NOT NULL DEFAULT 'multiple' CHECK (selection_type IN ('single', 'multiple')),
+      is_available        INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1))
     );
   `);
 
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS restaurant_tables (
       table_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-      table_number  INTEGER NOT NULL UNIQUE
+      table_number  INTEGER NOT NULL UNIQUE,
+      seats         INTEGER NOT NULL DEFAULT 4 CHECK (seats > 0)
     );
   `);
 
@@ -132,7 +136,7 @@ const MENU_ITEM_SEED = [
   { category: 'ของคาว', name: 'ต้มยำกุ้งน้ำข้น', priceSatang: 9000 },
   { category: 'ของคาว', name: 'ข้าวมันไก่', priceSatang: 5500 },
   { category: 'ของคาว', name: 'ผัดซีอิ๊วหมู', priceSatang: 5500 },
-  { category: 'ของคาว', name: 'eece', priceSatang: 5500 },
+  
   
  
   // ทานเล่น (6 รายการ)
@@ -162,16 +166,56 @@ const MENU_ITEM_SEED = [
 // รวม 26 รายการ / 4 หมวดหมู่ — ผ่านเกณฑ์ ≥4 หมวด หมวดละ ≥5 รวม ≥25 ของโจทย์ §2.1 ข้อ ก2
  
 const MENU_OPTION_SEED = [
+  // กะเพราหมูสับ 
+  { itemName: 'กะเพราหมูสับ', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'กะเพราหมูสับ', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  // เพิ่มเติม
   { itemName: 'กะเพราหมูสับ', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
-  { itemName: 'กะเพราหมูสับ', name: 'ไซส์ใหญ่', priceDeltaSatang: 1500 },
+  { itemName: 'กะเพราหมูสับ', name: 'ไข่เจียว', priceDeltaSatang: 1000 },
+  
+
+  { itemName: 'กะเพราไก่', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'กะเพราไก่', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
   { itemName: 'กะเพราไก่', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
-  { itemName: 'ข้าวผัดปู', name: 'ไข่ดาว', priceDeltaSatang: 1000 },
+  { itemName: 'กะเพราไก่', name: 'ไข่เจียว', priceDeltaSatang: 1000 },
+  
+  
+  { itemName: 'ข้าวผัดปู', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวผัดปู', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวผัดปู', name: 'เพิ่มปู', priceDeltaSatang: 1000 },
+  
+  { itemName: 'ข้าวมันไก่', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ข้าวมันไก่', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
   { itemName: 'ข้าวมันไก่', name: 'เพิ่มไก่', priceDeltaSatang: 2000 },
+ 
+  { itemName: 'ผัดไทยกุ้งสด', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ผัดไทยกุ้งสด', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+
+  { itemName: 'ผัดซีอิ๊วหมู', name: 'ธรรมดา', priceDeltaSatang: 0, groupName: 'ขนาด', selectionType: 'single' },
+  { itemName: 'ผัดซีอิ๊วหมู', name: 'พิเศษ', priceDeltaSatang: 2000, groupName: 'ขนาด', selectionType: 'single' },
+  
   { itemName: 'ชาไทยเย็น', name: 'หวานน้อย', priceDeltaSatang: 0 },
   { itemName: 'ชาไทยเย็น', name: 'ไม่ใส่น้ำแข็ง', priceDeltaSatang: 0 },
 ];
  
-const TABLE_COUNT = 15; // ตามสถานการณ์ในโจทย์ §1: ร้านมี 15 โต๊ะ
+// ตามสถานการณ์ในโจทย์ §1: ร้านมี 15 โต๊ะ — จำนวนที่นั่งกำหนดเองต่อโต๊ะ (โต๊ะเล็ก/กลาง/ใหญ่ปนกัน)
+const TABLE_SEED = [
+  { number: 1, seats: 2 },
+  { number: 2, seats: 2 },
+  { number: 3, seats: 4 },
+  { number: 4, seats: 4 },
+  { number: 5, seats: 4 },
+  { number: 6, seats: 4 },
+  { number: 7, seats: 2 },
+  { number: 8, seats: 6 },
+  { number: 9, seats: 2 },
+  { number: 10, seats: 2 },
+  { number: 11, seats: 4 },
+  { number: 12, seats: 8 },
+  { number: 13, seats: 4 },
+  { number: 14, seats: 6 },
+  { number: 15, seats: 2 },
+];
  
 // ---------------------------------------------------------------------------
 // 3) ใส่ข้อมูลตั้งต้น — เช็คก่อนว่าเคยใส่ไปแล้วหรือยัง กันการใส่ซ้ำตอนเปิดแอปรอบถัดไป
@@ -193,24 +237,48 @@ export async function seedDb(db) {
     // menu_items ----------------------------------------------------------
     const itemIdByName = {};
     for (const item of MENU_ITEM_SEED) {
+      const categoryId = categoryIdByName[item.category];
+      if (!categoryId) {
+        throw new Error(
+          `MENU_ITEM_SEED: ไม่พบหมวดหมู่ "${item.category}" ใน CATEGORY_SEED (สะกดผิดหรือยัง?) — เมนู "${item.name}" จะ insert ไม่ได้`
+        );
+      }
       const result = await db.runAsync(
         'INSERT INTO menu_items (category_id, name, price_satang) VALUES (?, ?, ?)',
-        [categoryIdByName[item.category], item.name, item.priceSatang]
+        [categoryId, item.name, item.priceSatang]
       );
       itemIdByName[item.name] = result.lastInsertRowId;
     }
  
     // menu_options --------------------------------------------------------
     for (const opt of MENU_OPTION_SEED) {
+      const itemId = itemIdByName[opt.itemName];
+      if (!itemId) {
+        throw new Error(
+          `MENU_OPTION_SEED: ไม่พบเมนูชื่อ "${opt.itemName}" ใน MENU_ITEM_SEED (สะกดผิดหรือยัง?) — ตัวเลือก "${opt.name}" จะ insert ไม่ได้`
+        );
+      }
       await db.runAsync(
-        'INSERT INTO menu_options (item_id, name, price_delta_satang) VALUES (?, ?, ?)',
-        [itemIdByName[opt.itemName], opt.name, opt.priceDeltaSatang]
+        `INSERT INTO menu_options
+           (item_id, name, price_delta_satang, group_name, selection_type, is_available)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          itemId,
+          opt.name,
+          opt.priceDeltaSatang,
+          opt.groupName ?? 'เพิ่มเติม',
+          opt.selectionType ?? 'multiple',
+          opt.isAvailable === false ? 0 : 1,
+        ]
       );
     }
  
     // restaurant_tables -----------------------------------------------------
-    for (let tableNumber = 1; tableNumber <= TABLE_COUNT; tableNumber++) {
-      await db.runAsync('INSERT INTO restaurant_tables (table_number) VALUES (?)', [tableNumber]);
+    for (const table of TABLE_SEED) {
+      await db.runAsync(
+        'INSERT INTO restaurant_tables (table_number, seats) VALUES (?, ?)',
+        [table.number, table.seats]
+      );
     }
   });
 }

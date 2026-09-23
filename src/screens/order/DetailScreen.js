@@ -113,7 +113,7 @@ export default function DetailScreen({ navigation }) {
                       </View>
 
                     </Pressable>
-                    <Pressable style={{borderRadius:20,backgroundColor:'#FAFDF7',marginTop:20 ,borderColor:'#E0EDE4',borderWidth:1}} onPress={() => navigation.navigate('Home' )}>
+                    <Pressable style={{borderRadius:20,backgroundColor:'#FAFDF7',marginTop:20 ,borderColor:'#E0EDE4',borderWidth:1}} onPress={() => navigation.navigate('MenuScreen' )}>
                       <View style={{justifyContent:'center',alignItems:'center',padding:30}}>
                             <Text style={{fontSize:20,fontWeight:'bold',color:'#42544A'}}>สั่งเพิ่ม</Text>
                       </View>

@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useFocusEffect } from '@react-navigation/native';
 import colors, { alpha } from './style/colors';
+import { getTablesWithStatus, openNewBill } from '../../db/queries_customer/tables';
+import { getKitchenQueueCount } from '../../db/queries_customer/orders';
+import { resetSalesData } from '../../db/db';
+
+//ใช้การ render ตารางผ่าน scrollviwe ไม่ใช่การใช้ FlatList
+// 133 คือ การดึงมาจาก db
+// 134 คือ state จากเครื่องไม่เกี่ยวกับ db
 
 const THAI_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const THAI_MONTHS = [
@@ -8,24 +17,50 @@ const THAI_MONTHS = [
   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
 ];
 
-function formatThaiDate(date) {
-  const day = THAI_DAYS[date.getDay()];
-  const month = THAI_MONTHS[date.getMonth()];
-  const buddhistYear = date.getFullYear() + 543;
-  const period = date.getHours() < 12 ? 'เช้า' : date.getHours() < 17 ? 'บ่าย' : 'เย็น';
-  return `${day} ${date.getDate()} ${month} ${buddhistYear} · รอบ${period}`;
+const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000; // ไทย = UTC+7 เสมอ ไม่มี DST
+
+// คำนวณเวลาไทยตรงจาก UTC 
+//ส่งกลับ getUTCxxx จะได้ไม่ให้เครื่องเอา โวนเวลาของเครื่องมาคิด
+function getBangkokNow() {
+  return new Date(Date.now() + BANGKOK_OFFSET_MS);
+}
+
+function formatThaiDate(bangkokDate) {
+  const day = THAI_DAYS[bangkokDate.getUTCDay()];
+  const month = THAI_MONTHS[bangkokDate.getUTCMonth()];
+  const buddhistYear = bangkokDate.getUTCFullYear() + 543;
+  const hours = bangkokDate.getUTCHours();
+  const period = hours < 12 ? 'เช้า' : hours < 17 ? 'บ่าย' : 'เย็น';
+  return `${day} ${bangkokDate.getUTCDate()} ${month} ${buddhistYear} · รอบ${period}`;
+}
+
+
+// เติม T + ' ให้ parser รู้ว่า string นี้คือ UTC ไม่ใช่ local time จะได้เวลาไทยตลอด
+function formatBangkokHM(sqliteUtcString) {
+  if (!sqliteUtcString) return '';
+  const utcMs = Date.parse(sqliteUtcString.replace(' ', 'T') + 'Z');
+  const bangkokDate = new Date(utcMs + BANGKOK_OFFSET_MS);
+  const hh = String(bangkokDate.getUTCHours()).padStart(2, '0');
+  const mm = String(bangkokDate.getUTCMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+
+// เปิดบิลแต่ไม่ได้สั่ง จะถือว่าไม่มีบิลค้างเด้ออ
+function isTableBusy(t) {
+  return t.bill_id != null && t.round_count > 0;
 }
 
 function LiveClock() {
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState(getBangkokNow());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
+    const id = setInterval(() => setNow(getBangkokNow()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
+  const hh = String(now.getUTCHours()).padStart(2, '0');
+  const mm = String(now.getUTCMinutes()).padStart(2, '0');
 
   return (
     <View style={styles.clockBlock}>
@@ -35,7 +70,64 @@ function LiveClock() {
   );
 }
 
-export default function SelectTable() {
+export default function SelectTable({ navigation }) {
+  const db = useSQLiteContext();  // เอาไว้ไปดึงข้อมูลคำสั่ง query โต๊ะใน table.js
+  const [tables, setTables] = useState([]);
+  const [selectedTableId, setSelectedTableId] = useState(null);
+  const [kitchenQueueCount, setKitchenQueueCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      getTablesWithStatus(db).then(setTables);
+      getKitchenQueueCount(db).then(setKitchenQueueCount);
+    }, [db])
+  );
+
+  const selectedTable = tables.find((t) => t.table_id === selectedTableId);
+  
+  // busy คือต้องสั่งก่อนอย่าน้อย 1 ครั้งนะครับ ่ท่านผู้ชม 
+  const canOpenNewBill = !!selectedTable && !isTableBusy(selectedTable);
+  const canEnterExistingBill = !!selectedTable && isTableBusy(selectedTable);
+
+  const availableCount = tables.filter((t) => !isTableBusy(t)).length;
+  const busyCount = tables.filter((t) => isTableBusy(t)).length;
+
+  async function handleOpenNewBill() {
+    if (!canOpenNewBill) return;
+    // ถ้าโต๊ะนี้มีบิลเปิดอยู่แล้ว (แค่ยังไม่สั่ง) ใช้บิลเดิมต่อ ไม่ insert ซ้ำ กันบิลซ้อนกัน
+    const billId =
+      selectedTable.bill_id ?? (await openNewBill(db, selectedTable.table_id));
+    navigation.navigate('MenuScreen', { billId, tableId: selectedTable.table_id });
+  }
+
+  function handleEnterExistingBill() {
+    if (!canEnterExistingBill) return;
+    navigation.navigate('MenuScreen', {
+      billId: selectedTable.bill_id,
+      tableId: selectedTable.table_id,
+    });
+  }
+
+  function handleResetData() {
+    Alert.alert(
+      'ล้างข้อมูลการขายทั้งหมด?',
+      'บิล รอบการสั่ง และรายการที่สั่งไปทั้งหมดจะถูกลบกลับสู่สถานะเริ่มต้น (เมนู/หมวดหมู่/โต๊ะไม่หาย) แก้คืนไม่ได้',
+      [
+        { text: 'ยกเลิก', style: 'cancel' },
+        {
+          text: 'ล้างข้อมูล',
+          style: 'destructive',
+          onPress: async () => {
+            await resetSalesData(db);
+            setSelectedTableId(null);
+            getTablesWithStatus(db).then(setTables);
+            getKitchenQueueCount(db).then(setKitchenQueueCount);
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <View style={styles.leftPanel}>
@@ -45,6 +137,9 @@ export default function SelectTable() {
           <Text style={styles.greetingSubtitle}>
             แตะหมายเลขโต๊ะที่คุณนั่งอยู่จากผังด้านขวา แล้วเปิดบิลใหม่หรือเข้าบิลที่ค้างอยู่
           </Text>
+          <View style={{height:150}}>
+
+          </View>
 
           <LiveClock />
 
@@ -52,21 +147,108 @@ export default function SelectTable() {
           <View style={styles.statsRow}>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>โต๊ะว่าง</Text>
-              <Text style={styles.statValue}>8</Text>
+              <Text style={styles.statValue}>{availableCount}</Text>
             </View>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>มีบิลค้าง</Text>
-              <Text style={styles.statValueOrange}>4</Text>
+              <Text style={styles.statValueOrange}>{busyCount}</Text>
             </View>
             <View style={styles.statColumn}>
               <Text style={styles.statLabel}>คิวครัว</Text>
-              <Text style={styles.statValue}>6</Text>
+              <Text style={styles.statValue}>{kitchenQueueCount}</Text>
             </View>
           </View>
         </View>
-      </View>
-      <View style={styles.rightPanel}>
 
+        <Pressable style={styles.resetButton} onPress={handleResetData}>
+          <Text style={styles.resetButtonText}>ล้างข้อมูลการขาย</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.rightPanel}>
+        <View style={styles.rightHeaderRow}>
+          <View>
+            <Text style={styles.rightTitle}>เลือกโต๊ะของคุณ</Text>
+            <Text style={styles.rightSubtitle}>โต๊ะสีส้มคือมีบิลอยู่ แตะเพื่อสั่งต่อในบิลเดิม</Text>
+          </View>
+
+          <View style={styles.legendRow}>
+            <View style={styles.legendBadge}>
+              <View style={styles.legendDotAvailable} />
+              <Text style={styles.legendText}>ว่าง {availableCount}</Text>
+            </View>
+            <View style={styles.legendBadge}>
+              <View style={styles.legendDotBusy} />
+              <Text style={styles.legendText}>มีบิลค้าง {busyCount}</Text>
+            </View>
+          </View>
+        </View>
+
+        <ScrollView style={styles.gridScroll}>  
+          <View style={styles.gridWrap}>
+             {tables.map((t) => {
+              const isBusy = isTableBusy(t);
+              const isSelected = t.table_id === selectedTableId;
+
+              return (
+                <Pressable
+                  key={t.table_id}
+                  onPress={() => setSelectedTableId(t.table_id)}
+                  style={[
+                    styles.tableCard,
+                    isBusy && styles.tableCardBusy,
+                    isSelected && styles.tableCardSelected,
+                  ]}
+                >
+                  <Text style={styles.tableNumber}>T{t.table_number}</Text>
+
+                  {isSelected ? (
+                    <Text style={styles.tableSelectedLabel}>เลือกอยู่</Text>
+                  ) : isBusy ? (
+                    <>
+                      <Text style={styles.tableBusyAmount}>
+                        ฿{(t.total_satang / 100).toLocaleString()}
+                      </Text>
+                      <Text style={styles.tableBusyRounds}>{t.round_count} รอบ</Text>
+                      <Text style={styles.tableOpenedTime}>
+                        เปิด {formatBangkokHM(t.opened_at)}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.tableStatusText}>ว่าง · {t.seats} ที่นั่ง</Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={handleOpenNewBill}
+            disabled={!canOpenNewBill}
+            style={[styles.primaryButton, !canOpenNewBill && styles.primaryButtonDisabled]}
+          >
+            <Text style={styles.primaryButtonText}>
+              {selectedTable ? `เปิดบิลใหม่ · โต๊ะ ${selectedTable.table_number}` : 'เปิดบิลใหม่'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleEnterExistingBill}
+            disabled={!canEnterExistingBill}
+            style={[styles.secondaryButton, !canEnterExistingBill && styles.secondaryButtonDisabled]}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonText,
+                !canEnterExistingBill && styles.secondaryButtonTextDisabled,
+              ]}
+            >
+              เข้าบิลที่ค้างอยู่
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -103,7 +285,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 2,
     textTransform: 'uppercase',
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
   },
   greetingTitle: {
     fontSize: 34,
@@ -115,7 +297,7 @@ const styles = StyleSheet.create({
   greetingSubtitle: {
     fontSize: 15,
     lineHeight: 22,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
     marginTop: 12,
   },
 
@@ -131,7 +313,7 @@ const styles = StyleSheet.create({
   },
   clockDate: {
     fontSize: 14,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
     marginTop: 4,
   },
 
@@ -150,7 +332,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: alpha.onDarkMin,
+    color: alpha.onDarkMax,
   },
   statValue: {
     fontSize: 28,
@@ -165,25 +347,21 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  
-  // ฝั่งซ้าย — สถานะเชื่อมต่อ (ล่างสุด)
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  // ฝั่งซ้าย — ปุ่มล้างข้อมูล (ชิดล่างสุดของแผง)
+  resetButton: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: alpha.onDarkMin,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  footerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.core.brandGreen,
-  },
-  footerText: {
+  resetButtonText: {
     fontSize: 12,
-    color: alpha.onDarkMin,
+    fontWeight: '600',
+    color: alpha.onDarkMax,
   },
 
-  
   // ฝั่งขวา — หัวข้อ + legend
   rightHeaderRow: {
     flexDirection: 'row',
