@@ -1,34 +1,31 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { SQLiteProvider } from 'expo-sqlite';
+import HomeScreen from './src/screens/order/HomeScreen';
+import DetailScreen from './src/screens/order/DetailScreen';
+import ExportBillScreen from './src/screens/order/ExportBillScreen';
+import { DATABASE_NAME, initDb, seedDb ,logAllData,seedMockBill} from './src/db/db';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <View style={{ flex: 1, flexDirection: 'row' }}>
-      
-      <View style={{ flex: 4, backgroundColor: 'lightblue' }}>
-        <Text>40%</Text>
-      </View>
-
-      <View style={{ flex: 6, backgroundColor: 'lightgreen' }}>
-        <Text>50%</Text>
-      </View>
-
-      
-
-  </View>
+    <SQLiteProvider
+      databaseName={DATABASE_NAME}
+      onInit={async (db) => {
+        await initDb(db);
+        await seedDb(db);
+        await seedMockBill(db); 
+        await logAllData(db); //logTable
+      }}
+    >
+      <NavigationContainer>
+        <Stack.Navigator initialRouteName="Home">
+          <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Detail" component={DetailScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Bill" component={ExportBillScreen} options={{ headerShown: false }} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SQLiteProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,  // ← ทำให้เต็มจอ
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  conntent :{
-    flex: 1,
-    backgroundColor: 'black',
-    justifyContent: 'center',
-   
-  }
-});

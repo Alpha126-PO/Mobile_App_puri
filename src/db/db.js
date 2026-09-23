@@ -27,17 +27,16 @@ export const DATABASE_NAME = 'restaurant_order.db';
 // 1) สร้างตาราง + index ทั้งหมด (รันครั้งเดียวตอนแอปเปิด — IF NOT EXISTS กันการสร้างซ้ำ)
 // ---------------------------------------------------------------------------
 export async function initDb(db) {
-  // เปิดบังคับ FOREIGN KEY ทุกครั้งที่เชื่อมต่อ (SQLite ไม่จำค่านี้ข้ามการเชื่อมต่อ)
+  await db.execAsync(`PRAGMA foreign_keys = ON;`);
+
   await db.execAsync(`
-    PRAGMA foreign_keys = ON;
- 
-    -- หมวดหมู่อาหาร -----------------------------------------------------
     CREATE TABLE IF NOT EXISTS categories (
       category_id  INTEGER PRIMARY KEY AUTOINCREMENT,
       name         TEXT NOT NULL
     );
- 
-    -- เมนูอาหาร (ราคาปัจจุบัน แก้ไขได้) -----------------------------------
+  `);
+
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS menu_items (
       item_id       INTEGER PRIMARY KEY AUTOINCREMENT,
       category_id   INTEGER NOT NULL REFERENCES categories(category_id) ON DELETE RESTRICT,
@@ -45,22 +44,25 @@ export async function initDb(db) {
       price_satang  INTEGER NOT NULL CHECK (price_satang > 0),
       is_available  INTEGER NOT NULL DEFAULT 1 CHECK (is_available IN (0, 1))
     );
- 
-    -- ตัวเลือกย่อยของเมนู เช่น ไข่ดาว, ไซส์ใหญ่ (มีผลต่อราคา) ------------------
+  `);
+
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS menu_options (
       option_id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      item_id              INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE CASCADE,
-      name                 TEXT NOT NULL,
-      price_delta_satang   INTEGER NOT NULL DEFAULT 0
+      item_id             INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE CASCADE,
+      name                TEXT NOT NULL,
+      price_delta_satang  INTEGER NOT NULL DEFAULT 0
     );
- 
-    -- โต๊ะในร้าน --------------------------------------------------------
+  `);
+
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS restaurant_tables (
       table_id      INTEGER PRIMARY KEY AUTOINCREMENT,
       table_number  INTEGER NOT NULL UNIQUE
     );
- 
-    -- บิล (1 บิล = 1 มื้อของโต๊ะนั้น) --------------------------------------
+  `);
+
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS bills (
       bill_id                INTEGER PRIMARY KEY AUTOINCREMENT,
       table_id               INTEGER NOT NULL REFERENCES restaurant_tables(table_id) ON DELETE RESTRICT,
@@ -71,8 +73,9 @@ export async function initDb(db) {
       tax_satang             INTEGER NOT NULL DEFAULT 0,
       service_charge_satang  INTEGER NOT NULL DEFAULT 0
     );
- 
-    -- รอบการสั่งของแต่ละบิล (สั่งเพิ่มได้หลายรอบ) -----------------------------
+  `);
+
+  await db.execAsync(`
     CREATE TABLE IF NOT EXISTS order_rounds (
       round_id      INTEGER PRIMARY KEY AUTOINCREMENT,
       bill_id       INTEGER NOT NULL REFERENCES bills(bill_id) ON DELETE CASCADE,
@@ -80,35 +83,36 @@ export async function initDb(db) {
       ordered_at    TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE (bill_id, round_number)
     );
- 
-    -- รายการอาหารที่สั่งในแต่ละรอบ (ราคาแช่แข็งไว้ ณ ตอนสั่ง) -------------------
-    CREATE TABLE IF NOT EXISTS order_items (
-      order_item_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-      round_id            INTEGER NOT NULL REFERENCES order_rounds(round_id) ON DELETE CASCADE,
-      item_id             INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE RESTRICT,
-      unit_price_satang   INTEGER NOT NULL CHECK (unit_price_satang > 0),
-      quantity            INTEGER NOT NULL CHECK (quantity > 0),
-      note                TEXT,
-      status              TEXT NOT NULL DEFAULT 'pending'
-                            CHECK (status IN ('pending', 'cooking', 'served', 'cancelled')),
-      cancelled_at        TEXT
-    );
- 
-    -- ตัวเลือกที่ถูกเลือกจริงของแต่ละรายการที่สั่ง (ราคาแช่แข็งไว้เหมือนกัน) --------
-    CREATE TABLE IF NOT EXISTS order_item_options (
-      order_item_option_id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_item_id                 INTEGER NOT NULL REFERENCES order_items(order_item_id) ON DELETE CASCADE,
-      option_id                     INTEGER NOT NULL REFERENCES menu_options(option_id) ON DELETE RESTRICT,
-      option_name_snapshot          TEXT NOT NULL,
-      price_delta_satang_snapshot   INTEGER NOT NULL
-    );
- 
-    -- index ที่ใช้บ่อย (ตามข้อกำหนด ≥ 2 จุด) --------------------------------
-    CREATE INDEX IF NOT EXISTS idx_menu_items_category  ON menu_items (category_id);
-    CREATE INDEX IF NOT EXISTS idx_bills_table_status    ON bills (table_id, status);
-    CREATE INDEX IF NOT EXISTS idx_order_rounds_bill     ON order_rounds (bill_id);
-    CREATE INDEX IF NOT EXISTS idx_order_items_round     ON order_items (round_id);
   `);
+
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      order_item_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+      round_id          INTEGER NOT NULL REFERENCES order_rounds(round_id) ON DELETE CASCADE,
+      item_id           INTEGER NOT NULL REFERENCES menu_items(item_id) ON DELETE RESTRICT,
+      unit_price_satang INTEGER NOT NULL CHECK (unit_price_satang > 0),
+      quantity          INTEGER NOT NULL CHECK (quantity > 0),
+      note              TEXT,
+      status            TEXT NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'cooking', 'served', 'cancelled')),
+      cancelled_at      TEXT
+    );
+  `);
+
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS order_item_options (
+      order_item_option_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_item_id              INTEGER NOT NULL REFERENCES order_items(order_item_id) ON DELETE CASCADE,
+      option_id                  INTEGER NOT NULL REFERENCES menu_options(option_id) ON DELETE RESTRICT,
+      option_name_snapshot       TEXT NOT NULL,
+      price_delta_satang_snapshot INTEGER NOT NULL
+    );
+  `);
+
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_items (category_id);`);
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_bills_table_status ON bills (table_id, status);`);
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_order_rounds_bill ON order_rounds (bill_id);`);
+  await db.execAsync(`CREATE INDEX IF NOT EXISTS idx_order_items_round ON order_items (round_id);`);
 }
  
 // ---------------------------------------------------------------------------
@@ -220,4 +224,106 @@ export async function seedDb(db) {
 // ---------------------------------------------------------------------------
 export async function resetSalesData(db) {
   await db.runAsync('DELETE FROM bills');
+}
+
+
+export async function logAllData(db) {
+  const categories = await db.getAllAsync('SELECT * FROM categories');
+  const menuItems = await db.getAllAsync('SELECT * FROM menu_items');
+  const tables = await db.getAllAsync('SELECT * FROM restaurant_tables');
+  
+  console.log('=== categories ===', JSON.stringify(categories, null, 2));
+  console.log('=== menu_items ===', JSON.stringify(menuItems, null, 2));
+  console.log('=== tables ===', JSON.stringify(tables, null, 2));
+}
+
+
+// mock data รอของภูริ data นัี้เกี่ยวกับข้อมูลพวกบิลที่เปิดกับโต้ะ
+export async function seedMockBill(db) {
+  const existing = await db.getFirstAsync('SELECT COUNT(*) AS count FROM bills');
+  if (existing?.count > 0) return;
+
+  await db.withTransactionAsync(async () => {
+    const bill = await db.runAsync(
+      `INSERT INTO bills (table_id, opened_at, status) VALUES (?, datetime('now'), 'open')`,
+      [1]
+    );
+    const billId = bill.lastInsertRowId;
+
+    // รอบที่ 1
+    const round1 = await db.runAsync(
+      `INSERT INTO order_rounds (bill_id, round_number, ordered_at) VALUES (?, 1, datetime('now'))`,
+      [billId]
+    );
+    const round1Id = round1.lastInsertRowId;
+
+    const item1 = await db.runAsync(
+      `INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`,
+      [round1Id, 1, 6000, 2, 'ธรรมดา', 'served']
+    );
+    await db.runAsync(
+      `INSERT INTO order_item_options (order_item_id, option_id, option_name_snapshot, price_delta_satang_snapshot) VALUES (?, ?, ?, ?)`,
+      [item1.lastInsertRowId, 1, 'ไข่ดาว', 1000]
+    );
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round1Id, 3, 6500, 1, '', 'served']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round1Id, 4, 8000, 1, '', 'served']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round1Id, 7, 5500, 2, '', 'served']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round1Id, 17, 3500, 2, '', 'served']);
+
+    // รอบที่ 2
+    const round2 = await db.runAsync(
+      `INSERT INTO order_rounds (bill_id, round_number, ordered_at) VALUES (?, 2, datetime('now'))`,
+      [billId]
+    );
+    const round2Id = round2.lastInsertRowId;
+
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round2Id, 10, 5500, 3, 'หวานน้อย', 'cooking']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round2Id, 23, 3000, 2, '', 'pending']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round2Id, 6, 9000, 1, 'เผ็ดน้อย', 'cooking']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round2Id, 11, 5500, 2, '', 'pending']);
+    await db.runAsync(`INSERT INTO order_items (round_id, item_id, unit_price_satang, quantity, note, status) VALUES (?, ?, ?, ?, ?, ?)`, [round2Id, 25, 2000, 4, '', 'pending']);
+  });
+}
+export async function getBillWithRounds(db, billId) {
+  const bill = await db.getFirstAsync(`
+    SELECT b.*, t.table_number
+    FROM bills b
+    JOIN restaurant_tables t ON t.table_id = b.table_id
+    WHERE b.bill_id = ?
+  `, [billId]);
+
+  if (!bill) return null;
+
+  const rounds = await db.getAllAsync(`
+    SELECT round_id, round_number, ordered_at
+    FROM order_rounds
+    WHERE bill_id = ?
+    ORDER BY round_number
+  `, [billId]);
+
+  for (const round of rounds) {
+    round.items = await db.getAllAsync(`
+      SELECT 
+        i.order_item_id,
+        i.unit_price_satang,
+        i.quantity,
+        i.note,
+        i.status,
+        m.name
+      FROM order_items i
+      JOIN menu_items m ON m.item_id = i.item_id
+      WHERE i.round_id = ?
+      ORDER BY i.order_item_id
+    `, [round.round_id]);
+
+    for (const item of round.items) {
+      item.options = await db.getAllAsync(`
+        SELECT option_name_snapshot, price_delta_satang_snapshot
+        FROM order_item_options
+        WHERE order_item_id = ?
+      `, [item.order_item_id]);
+    }
+  }
+
+  return { ...bill, rounds };
 }
