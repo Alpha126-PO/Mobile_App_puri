@@ -10,6 +10,7 @@ import SelectTable from './src/screens/customer/Select_Table';
 import MenuScreen from './src/screens/customer/Menu_Screen';
 import ReviewScreen from './src/screens/customer/Review_Screen';
 import ItemDetailScreen from './src/screens/customer/Item_Detail_Screen';
+import StaffScreen from './src/screens/staff/StaffScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -38,6 +39,7 @@ export default function App() {
               <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
               <Stack.Screen name="Detail" component={DetailScreen} options={{ headerShown: false }} />
               <Stack.Screen name="Bill" component={ExportBillScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="StaffScreen" component={StaffScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
           
         </NavigationContainer>
